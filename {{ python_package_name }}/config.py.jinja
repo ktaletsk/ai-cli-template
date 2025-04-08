@@ -1,0 +1,110 @@
+"""Configuration handling for {{ project_name }}."""
+
+import os
+import yaml
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+
+# Default configuration
+DEFAULT_CONFIG = {
+    "log_level": "INFO",
+    "default_model": "openai",
+    "models": [
+        {
+            "name": "openai",
+            "api_key": "",
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-4o"
+        }
+    ],
+    {% if include_rag %}
+    "vector_db": {
+        "host": "localhost",
+        "port": 19530,
+        "collection": "{{ project_slug }}_docs"
+    }
+    {% endif %}
+}
+
+
+def load_config() -> Dict[str, Any]:
+    """Load configuration from YAML file."""
+    # Check for config file in common locations
+    config_paths = [
+        Path("config.yaml"),                             # Current directory
+        Path("config.yml"),                              # Alternative extension
+        Path.home() / ".{{ project_slug }}" / "config.yaml", # User home directory
+    ]
+    
+    # Use the first config file found
+    config_file = None
+    for path in config_paths:
+        if path.exists():
+            config_file = path
+            break
+    
+    # Start with default configuration
+    config = DEFAULT_CONFIG.copy()
+    
+    # Update with values from config file if found
+    if config_file:
+        try:
+            with open(config_file, 'r') as f:
+                user_config = yaml.safe_load(f)
+                if user_config:
+                    _deep_update(config, user_config)
+        except Exception as e:
+            print(f"Error loading configuration from {config_file}: {e}")
+    
+    return config
+
+
+def _deep_update(base_dict: Dict, update_dict: Dict) -> None:
+    """Recursively update a dictionary."""
+    for key, value in update_dict.items():
+        if isinstance(value, dict) and key in base_dict and isinstance(base_dict[key], dict):
+            _deep_update(base_dict[key], value)
+        else:
+            base_dict[key] = value
+
+
+def get_config_value(key: str, default: Optional[Any] = None) -> Any:
+    """Get a specific configuration value."""
+    config = load_config()
+    
+    # Handle nested keys with dot notation (e.g., "vector_db.host")
+    if "." in key:
+        parts = key.split(".")
+        value = config
+        for part in parts:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+            else:
+                return default
+        return value
+    
+    return config.get(key, default)
+
+
+def get_model_config(model_name: Optional[str] = None) -> Dict[str, str]:
+    """Get configuration for a specific model or the default model."""
+    config = load_config()
+    
+    # Use default model if none specified
+    model_name = model_name or config.get("default_model")
+    
+    if not model_name:
+        raise ValueError("No model specified and no default model configured")
+    
+    # Find the model configuration
+    for model in config.get("models", []):
+        if model.get("name") == model_name:
+            return model
+    
+    raise ValueError(f"Model configuration not found: {model_name}")
+
+
+def get_available_models() -> List[str]:
+    """Get a list of available model names."""
+    config = load_config()
+    return [model.get("name") for model in config.get("models", [])] 

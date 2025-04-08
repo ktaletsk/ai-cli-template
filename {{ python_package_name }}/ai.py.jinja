@@ -1,0 +1,54 @@
+"""AI client implementations for {{ project_name }}."""
+
+import os
+from typing import Any, Dict, Optional, Union
+
+from openai import OpenAI
+
+from {{ python_package_name }}.config import get_model_config
+
+
+def get_ai_client(model_name: Optional[str] = None) -> Any:
+    """Get an OpenAI-compatible client for the specified model or default model."""
+    model_config = get_model_config(model_name)
+    
+    # Extract configuration values
+    api_key = model_config.get("api_key", "")
+    api_base = model_config.get("api_base", "")
+    
+    if not api_key:
+        raise ValueError(f"API key is required for model '{model_config.get('name')}'")
+    
+    if not api_base:
+        raise ValueError(f"API base URL is required for model '{model_config.get('name')}'")
+    
+    # Create and return the client
+    client = OpenAI(api_key=api_key, base_url=api_base)
+    return client
+
+
+def query_ai(
+    prompt: str, 
+    model_name: Optional[str] = None, 
+    system_prompt: str = "You are a helpful AI assistant.",
+    **kwargs
+) -> str:
+    """Send a query to the AI model and return the response."""
+    model_config = get_model_config(model_name)
+    client = get_ai_client(model_name)
+    
+    # Use the model from the configuration
+    model_id = model_config.get("model")
+    
+    # Create and send the request
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+        **kwargs
+    )
+    
+    return response.choices[0].message.content 

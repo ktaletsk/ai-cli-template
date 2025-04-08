@@ -1,0 +1,14 @@
+name: {{ project_slug }}
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python={{ python_version }}
+  - click>=8.0.0
+  - python-dotenv>=1.0.0
+  - pyyaml>=6.0
+  - openai>=1.0.0 
+  {% if include_rag %}
+  - pymilvus>=1.1
+  {% endif %}
+  - pip

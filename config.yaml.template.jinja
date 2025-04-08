@@ -1,0 +1,31 @@
+# Configuration file for {{ project_name }}
+# Copy this file to config.yaml and update with your values
+
+# General configuration
+log_level: INFO
+
+# Default model to use (must match a name in your models configuration)
+default_model: openai
+
+# AI Models Configuration
+# Each model requires: name, api_key, api_base, and model
+models:
+  - name: openai-gpt-4o
+    api_key: your-openai-api-key-here
+    api_base: https://api.openai.com/v1
+    model: gpt-4o
+  
+  {% if use_ollama %}
+  - name: ollama-deepseek-r1
+    api_key: ollama
+    api_base: http://localhost:11434/v1
+    model: deepseek-r1:14b
+  {% endif %}
+
+{% if include_rag %}
+# Vector Database for RAG
+vector_db:
+  host: localhost
+  port: 19530
+  collection: {{ project_slug }}_docs
+{% endif %} 

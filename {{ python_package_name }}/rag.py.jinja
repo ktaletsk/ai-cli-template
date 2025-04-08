@@ -1,0 +1,314 @@
+"""Retrieval-Augmented Generation (RAG) implementation for {{ project_name }}."""
+
+{% if include_rag %}
+import os
+import glob
+import json
+import re
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple
+import csv
+
+from pymilvus import connections, Collection, CollectionSchema, FieldSchema, DataType, utility
+
+from {{ python_package_name }}.ai import query_ai
+from {{ python_package_name }}.config import get_config_value, get_model_config
+
+
+def setup_vector_db() -> None:
+    """Set up connection to the vector database."""
+    host = get_config_value("vector_db.host", "localhost")
+    port = get_config_value("vector_db.port", "19530")
+    
+    connections.connect(
+        alias="default",
+        host=host,
+        port=port,
+    )
+    
+
+def get_or_create_collection() -> Collection:
+    """Get or create a collection for document storage."""
+    setup_vector_db()
+    
+    collection_name = get_config_value("vector_db.collection", "{{ project_slug }}_docs")
+    
+    # Check if collection exists
+    if utility.has_collection(collection_name):
+        return Collection(collection_name)
+    
+    # Define the fields for the collection
+    fields = [
+        FieldSchema(name="id", dtype=DataType.VARCHAR, max_length=100, is_primary=True),
+        FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=65535),
+        FieldSchema(name="metadata", dtype=DataType.VARCHAR, max_length=10000),
+        FieldSchema(name="embedding", dtype=DataType.FLOAT_VECTOR, dim=1536)  # OpenAI embedding dimension
+    ]
+    
+    # Create the schema
+    schema = CollectionSchema(fields)
+    
+    # Create the collection
+    collection = Collection(name=collection_name, schema=schema)
+    
+    # Create an index on the embedding field
+    index_params = {
+        "metric_type": "COSINE",
+        "index_type": "HNSW",
+        "params": {"M": 8, "efConstruction": 64}
+    }
+    collection.create_index(field_name="embedding", index_params=index_params)
+    
+    return collection
+
+
+def get_embedding(text: str, model_name: Optional[str] = None) -> List[float]:
+    """Get embedding vector for a text using OpenAI API."""
+    from openai import OpenAI
+    
+    # Get the model configuration
+    model_config = get_model_config(model_name)
+    
+    client = OpenAI(
+        api_key=model_config.get("api_key", ""),
+        base_url=model_config.get("api_base", "")
+    )
+    
+    # Use the default embedding model from OpenAI
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-3-small"
+    )
+    
+    return response.data[0].embedding
+
+
+def add_documents(path: str, recursive: bool = True) -> int:
+    """Add documents to the RAG index from a path."""
+    path_obj = Path(path)
+    
+    if not path_obj.exists():
+        raise FileNotFoundError(f"Path does not exist: {path}")
+    
+    # Get the vector store collection
+    collection = get_or_create_collection()
+    
+    # Initialize document count
+    doc_count = 0
+    
+    # Handle directory
+    if path_obj.is_dir():
+        # Get all files recursively if requested
+        if recursive:
+            files = glob.glob(f"{path}/**/*.*", recursive=True)
+        else:
+            files = [str(p) for p in path_obj.iterdir() if p.is_file()]
+        
+        for file_path in files:
+            try:
+                doc_chunks = process_document(file_path)
+                if doc_chunks:
+                    doc_count += len(doc_chunks)
+                    add_chunks_to_collection(collection, doc_chunks)
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+    
+    # Handle single file
+    elif path_obj.is_file():
+        try:
+            doc_chunks = process_document(str(path_obj))
+            if doc_chunks:
+                doc_count += len(doc_chunks)
+                add_chunks_to_collection(collection, doc_chunks)
+        except Exception as e:
+            print(f"Error processing {path}: {e}")
+    
+    # Flush the collection to ensure data is committed
+    if doc_count > 0:
+        collection.flush()
+    
+    return doc_count
+
+
+def process_document(file_path: str) -> List[Dict[str, Any]]:
+    """Process a document into chunks suitable for embedding."""
+    try:
+        file_path_lower = file_path.lower()
+        content = ""
+        
+        # Handle different file types
+        if file_path_lower.endswith(('.txt', '.md', '.py', '.js', '.html', '.css', '.java', '.c', '.cpp')):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        elif file_path_lower.endswith('.csv'):
+            # Simple CSV handling
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                content = "\n".join([",".join(row) for row in reader])
+        elif file_path_lower.endswith('.json'):
+            # Simple JSON handling
+            with open(file_path, 'r', encoding='utf-8') as f:
+                try:
+                    data = json.load(f)
+                    content = json.dumps(data, indent=2)
+                except:
+                    content = f.read()
+        else:
+            # Skip binary or unsupported files
+            print(f"Skipping unsupported file type: {file_path}")
+            return []
+        
+        # Split content into chunks
+        chunks = chunk_text(content, chunk_size=1000, overlap=200)
+        
+        # Create metadata
+        metadata = {
+            "source": file_path,
+            "file_type": Path(file_path).suffix,
+            "filename": Path(file_path).name
+        }
+        
+        # Process each chunk
+        results = []
+        for i, chunk in enumerate(chunks):
+            chunk_id = f"{os.path.basename(file_path)}_{i}"
+            
+            # Don't compute embeddings yet to save API calls
+            results.append({
+                "id": chunk_id,
+                "content": chunk,
+                "metadata": json.dumps(metadata)
+            })
+        
+        return results
+    
+    except Exception as e:
+        print(f"Error processing file {file_path}: {e}")
+        return []
+
+
+def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
+    """Split text into overlapping chunks."""
+    if not text:
+        return []
+    
+    # Split text into sentences (simple approach)
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    
+    chunks = []
+    current_chunk = []
+    current_size = 0
+    
+    for sentence in sentences:
+        sentence_size = len(sentence)
+        
+        # If adding this sentence would exceed the chunk size and we already have content,
+        # finalize the current chunk and start a new one
+        if current_size + sentence_size > chunk_size and current_chunk:
+            chunks.append(" ".join(current_chunk))
+            
+            # Keep some sentences for overlap
+            overlap_sentences = []
+            overlap_size = 0
+            for s in reversed(current_chunk):
+                if overlap_size + len(s) <= overlap:
+                    overlap_sentences.insert(0, s)
+                    overlap_size += len(s) + 1  # +1 for space
+                else:
+                    break
+            
+            current_chunk = overlap_sentences
+            current_size = overlap_size
+        
+        current_chunk.append(sentence)
+        current_size += sentence_size + 1  # +1 for space
+    
+    # Add the last chunk if it has content
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    
+    return chunks
+
+
+def add_chunks_to_collection(collection: Collection, chunks: List[Dict[str, Any]]) -> None:
+    """Add document chunks to the Milvus collection."""
+    if not chunks:
+        return
+    
+    entities = []
+    ids = []
+    contents = []
+    metadata_list = []
+    embeddings = []
+    
+    # Generate embeddings for each chunk
+    for chunk in chunks:
+        ids.append(chunk["id"])
+        contents.append(chunk["content"])
+        metadata_list.append(chunk["metadata"])
+        
+        # Get embedding for this chunk
+        embedding = get_embedding(chunk["content"])
+        embeddings.append(embedding)
+    
+    # Insert the data
+    entities = [
+        ids,
+        contents,
+        metadata_list,
+        embeddings
+    ]
+    
+    collection.insert(entities)
+
+
+def query_with_rag(query: str, top_k: int = 3, model_name: Optional[str] = None) -> str:
+    """Query the AI model with context from the document store."""
+    # Get the vector store collection
+    collection = get_or_create_collection()
+    collection.load()
+    
+    # Generate embedding for the query
+    query_embedding = get_embedding(query, model_name)
+    
+    # Search for similar documents
+    search_params = {"metric_type": "COSINE", "params": {"ef": 64}}
+    results = collection.search(
+        data=[query_embedding],
+        anns_field="embedding",
+        param=search_params,
+        limit=top_k,
+        output_fields=["content", "metadata"]
+    )
+    
+    # Extract matching content
+    context_chunks = []
+    for hit in results[0]:
+        content = hit.entity.get('content')
+        metadata = json.loads(hit.entity.get('metadata', '{}'))
+        source = metadata.get('source', 'unknown')
+        context_chunks.append(f"Source: {source}\n{content}")
+    
+    # Combine into a single context
+    context = "\n\n---\n\n".join(context_chunks)
+    
+    # Create a prompt with the context
+    prompt = f"""
+    Use the following information to answer the question. If the information provided doesn't contain 
+    the answer, just say you don't know.
+    
+    Context:
+    {context}
+    
+    Question: {query}
+    """
+    
+    # Query the AI model with the context
+    return query_ai(
+        prompt, 
+        model_name=model_name,
+        system_prompt="You are a helpful assistant that provides accurate information based on the context provided."
+    )
+{% else %}
+# RAG functionality is not enabled for this project
+{% endif %} 

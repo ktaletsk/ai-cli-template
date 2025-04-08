@@ -1,0 +1,76 @@
+# Setting up {{ project_name }}
+
+Congratulations on creating your new AI-powered CLI project!
+
+## Setup Instructions
+
+Follow these steps to set up your development environment:
+
+1. Create the conda environment:
+   ```bash
+   conda env create -f environment.yml
+   ```
+
+2. Activate the conda environment:
+   ```bash
+   conda activate {{ project_slug }}
+   ```
+
+3. Install the project in development mode:
+   ```bash
+   pip install -e .
+   ```
+
+4. Create a configuration file:
+   ```bash
+   cp config.yaml.template config.yaml
+   # Edit config.yaml with your API keys
+   ```
+
+5. Test the CLI:
+   ```bash
+   {{ project_slug }} --help
+   ```
+
+## Configuration
+
+The CLI uses a YAML configuration file to store API keys and other settings. You can place this file in:
+- The current directory as `config.yaml`
+- Your home directory at `~/.{{ project_slug }}/config.yaml`
+
+Example configuration:
+
+```yaml
+# Default model to use
+default_model: openai
+
+# Models configuration
+models:
+  - name: openai
+    api_key: your-openai-api-key
+    api_base: https://api.openai.com/v1
+    model: gpt-4o
+```
+
+{% if include_rag %}
+## Using RAG Features
+
+To use the Retrieval-Augmented Generation features, you'll need to:
+
+1. Start a Milvus vector database (or use a hosted one)
+2. Configure the connection in your `config.yaml` file:
+   ```yaml
+   vector_db:
+     host: localhost
+     port: 19530
+     collection: {{ project_slug }}_docs
+   ```
+3. Index documents with:
+   ```bash
+   {{ project_slug }} index add /path/to/your/documents
+   ```
+{% endif %}
+
+## Next Steps
+
+Check the README.md file for more information on how to use this CLI tool. 

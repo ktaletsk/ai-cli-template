@@ -1,0 +1,96 @@
+"""Command line interface for {{ project_name }}."""
+
+import os
+import sys
+from typing import Optional
+
+import click
+
+from {{ python_package_name }}.config import load_config, get_available_models
+from {{ python_package_name }}.ai import query_ai
+{% if include_rag %}
+from {{ python_package_name }}.rag import add_documents, query_with_rag
+{% endif %}
+
+
+@click.group()
+def cli():
+    """{{ project_description }}"""
+    # Load configuration from environment variables
+    load_config()
+
+
+@cli.command()
+@click.argument('prompt')
+{% if include_rag %}
+@click.option('--rag', is_flag=True, help="Use RAG for enhanced responses")
+{% endif %}
+@click.option('--model', '-m', help="Model to use (from your configured models)")
+@click.option('--system-prompt', '-s', help="System prompt to use", default="You are a helpful AI assistant.")
+@click.option('--list-models', is_flag=True, help="List available models and exit")
+def query(prompt, {% if include_rag %}rag, {% endif %}model, system_prompt, list_models):
+    """Query an AI model with a prompt."""
+    if list_models:
+        models = get_available_models()
+        if models:
+            click.echo("Available models:")
+            for model_name in models:
+                click.echo(f"  - {model_name}")
+        else:
+            click.echo("No models configured. Configure models in your .env file.")
+        return
+    
+    try:
+        {% if include_rag %}
+        if rag:
+            response = query_with_rag(prompt, model_name=model)
+        else:
+            response = query_ai(prompt, model_name=model, system_prompt=system_prompt)
+        {% else %}
+        response = query_ai(prompt, model_name=model, system_prompt=system_prompt)
+        {% endif %}
+        
+        click.echo(response)
+    except Exception as e:
+        click.secho(f"Error: {str(e)}", fg="red", err=True)
+        sys.exit(1)
+
+
+{% if include_rag %}
+@cli.group()
+def index():
+    """Manage the document index for RAG."""
+    pass
+
+
+@index.command(name="add")
+@click.argument('path')
+@click.option('--recursive/--no-recursive', default=True, 
+              help="Recursively add documents in directories")
+def index_add(path, recursive):
+    """Add documents to the RAG index."""
+    try:
+        count = add_documents(path, recursive=recursive)
+        click.secho(f"Successfully added {count} documents to the index", fg="green")
+    except Exception as e:
+        click.secho(f"Error: {str(e)}", fg="red", err=True)
+        sys.exit(1)
+{% endif %}
+
+
+@cli.command()
+def models():
+    """List available AI models."""
+    models = get_available_models()
+    if models:
+        click.echo("Available models:")
+        for model_name in models:
+            click.echo(f"  - {model_name}")
+    else:
+        click.echo("No models configured. Configure models in your .env file.")
+
+
+app = cli  # For compatibility with the entry point
+
+if __name__ == "__main__":
+    cli() 

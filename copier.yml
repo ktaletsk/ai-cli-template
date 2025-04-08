@@ -1,0 +1,51 @@
+_templates_suffix: ".jinja"
+
+project_name:
+    type: str
+    help: Project name
+    default: AI CLI Tool
+
+project_slug:
+    type: str
+    help: Project slug (used for directory and package name, should contain only lowercase letters, numbers, dashes, and underscores)
+    default: "{{ project_name|lower|replace(' ', '-') }}"
+
+python_package_name:
+    type: str
+    help: Python package name (must be valid Python identifier - letters, numbers, underscores only)
+    default: "{{ project_slug|replace('-', '_') }}"
+
+project_description:
+    type: str
+    help: Short description of the project
+    default: A simple AI-powered CLI tool
+
+author_name:
+    type: str
+    help: Author name
+    default: Your Name
+
+author_email:
+    type: str
+    help: Author email
+    default: your.email@example.com
+
+use_ollama:
+    type: bool
+    help: Include Ollama as an LLM option (local models)
+    default: false
+
+include_rag:
+    type: bool
+    help: Include Retrieval-Augmented Generation capabilities
+    default: false
+
+python_version:
+    type: str
+    help: Python version to use
+    default: "3.12"
+    choices:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"

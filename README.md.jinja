@@ -1,0 +1,115 @@
+# {{ project_name }}
+
+{{ project_description }}
+
+## Installation
+
+This project uses conda for environment management.
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd {{ project_slug }}
+
+# Create and activate the conda environment
+conda env create -f environment.yml
+conda activate {{ project_slug }}
+```
+
+## Usage
+
+```bash
+# Get help
+{{ project_slug }} --help
+
+# List available models
+{{ project_slug }} models
+
+# Basic usage (with default model)
+{{ project_slug }} query "Your question here"
+
+# Specify a model to use
+{{ project_slug }} query --model openai "Your question here"
+
+# Customize the system prompt
+{{ project_slug }} query --system-prompt "You are a helpful coding assistant." "How do I write a Python function?"
+```
+
+{% if include_rag %}
+## RAG Capabilities
+
+This CLI includes Retrieval-Augmented Generation (RAG) capabilities:
+
+```bash
+# Index documents
+{{ project_slug }} index add /path/to/documents
+
+# Query with context from your documents
+{{ project_slug }} query --rag "Question that requires document context"
+
+# Use RAG with a specific model
+{{ project_slug }} query --rag --model openai "Question that requires document context"
+```
+{% endif %}
+
+## Configuration
+
+This tool can work with any OpenAI-compatible API. Configure your models in a `config.yaml` file:
+
+### YAML Configuration
+
+Create a `config.yaml` file in your project directory or in `~/.{{ project_slug }}/config.yaml`:
+
+```yaml
+# Default model to use
+default_model: openai
+
+# Models configuration
+models:
+  - name: openai
+    api_key: your-openai-api-key
+    api_base: https://api.openai.com/v1
+    model: gpt-4o
+  
+  - name: azure
+    api_key: your-azure-api-key
+    api_base: https://your-endpoint.openai.azure.com/openai/deployments/your-deployment-name
+    model: gpt-4-turbo
+  
+  - name: anthropic
+    api_key: your-anthropic-api-key
+    api_base: https://api.anthropic.com/v1
+    model: claude-3-opus-20240229
+  {% if use_ollama %}
+  - name: ollama-llama
+    api_key: ollama
+    api_base: http://localhost:11434/v1
+    model: llama3
+  {% endif %}
+
+# Log level
+log_level: INFO
+{% if include_rag %}
+
+# Vector database for RAG
+vector_db:
+  host: localhost
+  port: 19530
+  collection: {{ project_slug }}_docs
+{% endif %}
+```
+
+### Using the Models
+
+You can specify which model to use with the `--model` option:
+
+```bash
+{{ project_slug }} query --model anthropic "What is the meaning of life?"
+```
+
+## Development
+
+```bash
+# Install in development mode
+pip install -e .
+``` 
