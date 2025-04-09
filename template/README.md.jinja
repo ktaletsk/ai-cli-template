@@ -18,6 +18,9 @@ cd {{ project_slug }}
 # Create and activate the conda environment
 conda env create -f environment.yml
 conda activate {{ project_slug }}
+
+# Install the package
+pip install .
 ```
 
 ## Usage
