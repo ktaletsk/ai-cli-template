@@ -1,5 +1,7 @@
 # AI CLI Tool Template
 
+[![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-orange.json)](https://github.com/copier-org/copier)
+
 This repository contains a template for creating AI-powered CLI tools using Python. It provides a solid foundation for building command-line applications that leverage various AI models like OpenAI, Anthropic, and local models through Ollama.
 
 ## Features
