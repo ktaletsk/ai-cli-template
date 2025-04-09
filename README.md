@@ -23,7 +23,7 @@ To use this template, you need [Copier](https://copier.readthedocs.io/en/stable/
 pip install copier
 
 # Create a new project
-copier copy gh:fractionalai/template path/to/your-project
+copier copy gh:ktaletsk/ai-cli-template path/to/your-project
 ```
 
 During the copy process, you'll be prompted to customize your project with options like:
