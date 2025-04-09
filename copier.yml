@@ -31,6 +31,11 @@ author_email:
     help: Author email
     default: your.email@example.com
 
+github_repo:
+    type: str
+    help: GitHub repository URL (optional)
+    default: ""
+
 use_ollama:
     type: bool
     help: Include Ollama as an LLM option (local models)

@@ -8,7 +8,11 @@ This project uses conda for environment management.
 
 ```bash
 # Clone the repository
+{% if github_repo %}
+git clone {{ github_repo }}
+{% else %}
 git clone <repository-url>
+{% endif %}
 cd {{ project_slug }}
 
 # Create and activate the conda environment
